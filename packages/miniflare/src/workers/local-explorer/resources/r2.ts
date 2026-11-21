@@ -198,6 +198,7 @@ type ListObjectsQuery = NonNullable<
  * - `prefix`: Filter objects by prefix (e.g., "folder1/")
  * - `delimiter`: Use "/" for directory-style navigation
  * - `cursor`: Pagination cursor
+ * - `start_after`: Exclusive lower bound for object keys
  * - `per_page`: Max results per page (default 1000)
  *
  * @see https://developers.cloudflare.com/api/resources/r2/subresources/buckets/subresources/objects/methods/list/
@@ -217,6 +218,7 @@ export async function listR2Objects(
 		prefix,
 		delimiter,
 		cursor,
+		startAfter: query.start_after,
 		limit,
 		// Matches workerd when the r2_list_honor_include compat flag is enabled
 		// and the caller does not specify an include list.

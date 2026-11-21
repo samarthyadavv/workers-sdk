@@ -95,6 +95,42 @@ describe("R2 API", () => {
 			);
 		});
 
+		test("resumes listing after a key and continues with a cursor", async ({
+			expect,
+		}) => {
+			const r2 = await mf.getR2Bucket("TEST_BUCKET");
+			await r2.put("resume/first", "content1");
+			await r2.put("resume/second", "content2");
+			await r2.put("resume/third", "content3");
+
+			const url = new URL(`${BASE_URL}/r2/buckets/test-bucket/objects`);
+			url.searchParams.set("prefix", "resume/");
+			url.searchParams.set("start_after", "resume/first");
+			url.searchParams.set("per_page", "1");
+
+			const firstPage = await expectValidResponse(
+				await mf.dispatchFetch(url.href),
+				zR2BucketListObjectsResponse,
+				expect
+			);
+			expect(firstPage.result?.map(({ key }) => key)).toEqual([
+				"resume/second",
+			]);
+			const cursor = firstPage.result_info?.cursor;
+			expect(cursor).toBeTruthy();
+
+			url.searchParams.delete("start_after");
+			url.searchParams.set("cursor", cursor ?? "");
+			const secondPage = await expectValidResponse(
+				await mf.dispatchFetch(url.href),
+				zR2BucketListObjectsResponse,
+				expect
+			);
+			expect(secondPage.result?.map(({ key }) => key)).toEqual([
+				"resume/third",
+			]);
+		});
+
 		test("filters objects by prefix", async ({ expect }) => {
 			const r2 = await mf.getR2Bucket("TEST_BUCKET");
 			await r2.put("folder1/file1.txt", "content1");
