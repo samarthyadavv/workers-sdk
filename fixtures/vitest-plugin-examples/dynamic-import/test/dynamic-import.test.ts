@@ -1,5 +1,4 @@
-import { env } from "cloudflare:workers";
-import { exports } from "cloudflare:workers";
+import { env, exports } from "cloudflare:workers";
 import { it } from "vitest";
 
 // Regression test for https://github.com/cloudflare/workers-sdk/issues/12924
@@ -16,14 +15,21 @@ it("exports.default.fetch() with dynamic import()", async ({ expect }) => {
 	expect(await response.text()).toBe("Hello, World!");
 });
 
-// Regression test for https://github.com/cloudflare/workers-sdk/issues/5387
-//
-// Dynamic import() inside a Durable Object fetch handler has the same
-// cross-context I/O violation when the module isn't already cached.
-it("Durable Object fetch with dynamic import()", async ({ expect }) => {
-	const id = env.GREETER.idFromName("test");
-	const stub = env.GREETER.get(id);
-	const response = await stub.fetch(new Request("https://example.com/"));
-	expect(response.status).toBe(200);
-	expect(await response.text()).toBe("Hello, DO!");
+// Covers https://github.com/cloudflare/workers-sdk/issues/5387 and the concurrent
+// imports reported in https://github.com/cloudflare/workers-sdk/issues/16850.
+it("shares a deferred module evaluation across Durable Objects", async ({
+	expect,
+}) => {
+	const responses = await Promise.all(
+		["first", "second", "third"].map((name) =>
+			env.GREETER.get(env.GREETER.idFromName(name)).fetch(
+				"https://example.com/"
+			)
+		)
+	);
+	expect(responses.map((response) => response.status)).toEqual([200, 200, 200]);
+	const greetings = await Promise.all(
+		responses.map((response) => response.text())
+	);
+	expect(greetings).toEqual(["Hello, DO!", "Hello, DO!", "Hello, DO!"]);
 });

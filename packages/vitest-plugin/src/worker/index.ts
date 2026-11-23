@@ -26,8 +26,12 @@ interface InlinedModule {
 	file?: string;
 }
 
+interface InlinedModuleContext {
+	__vite_ssr_dynamic_import__?: (dependency: string) => Promise<unknown>;
+}
+
 type RunInlinedModule = (
-	context: unknown,
+	context: InlinedModuleContext,
 	code: string,
 	module: InlinedModule
 ) => unknown;
@@ -471,9 +475,7 @@ export class __VITEST_POOL_WORKERS_RUNNER_DURABLE_OBJECT__ extends DurableObject
 				}
 				// Vitest passes a reused worker's module runner to `onModuleRunner` again
 				// for every test file it runs there (`isolate: false`). Patching it again
-				// would wrap `transport.invoke`, `createRequire` and `createImportMeta` in
-				// one more layer per file, so each module import would cost more than the
-				// one before.
+				// would add another layer to the runner and evaluator methods for each file.
 				if (!patchedModuleRunners.has(runner)) {
 					patchedModuleRunners.add(runner);
 					if (runner.evaluator?.createRequire) {
@@ -505,6 +507,20 @@ export class __VITEST_POOL_WORKERS_RUNNER_DURABLE_OBJECT__ extends DurableObject
 							// created it, so resolve inlined modules relative to their own URL.
 							meta.resolve = (specifier) => new URL(specifier, meta.url).href;
 							return meta;
+						};
+					}
+					if (runner.evaluator?.runInlinedModule) {
+						const originalRunInlinedModule =
+							runner.evaluator.runInlinedModule.bind(runner.evaluator);
+						runner.evaluator.runInlinedModule = (context, code, module) => {
+							const dynamicImport = context.__vite_ssr_dynamic_import__;
+							if (typeof dynamicImport === "function") {
+								// Concurrent imports share pending evaluations. Run the whole
+								// import in the runner context so no user DO owns that I/O.
+								context.__vite_ssr_dynamic_import__ = (dependency) =>
+									runInRunnerObject(() => dynamicImport(dependency));
+							}
+							return originalRunInlinedModule(context, code, module);
 						};
 					}
 					if (runner.transport?.invoke) {
